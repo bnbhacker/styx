@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Styx minimal mark (favicon / small sizes): the X crossing the river. -->
+  <defs>
+    <clipPath id="up-e"><rect x="0" y="0" width="400" height="200"/></clipPath>
+    <clipPath id="dn-e"><rect x="0" y="200" width="400" height="200"/></clipPath>
+  </defs>
+  <rect width="400" height="200" fill="#e6eaf0"/>
+  <rect y="200" width="400" height="200" fill="#0e1013"/>
+  <rect x="0" y="197.6" width="400" height="4.8" fill="#c8bf1a"/>
+  <g clip-path="url(#up-e)" fill="#0e1013"><polygon points="113.80,325.80 325.80,113.80 286.20,74.20 74.20,286.20"/><polygon points="74.20,113.80 286.20,325.80 325.80,286.20 113.80,74.20"/></g>
+  <g clip-path="url(#dn-e)" fill="#e6eaf0"><polygon points="113.80,325.80 325.80,113.80 286.20,74.20 74.20,286.20"/><polygon points="74.20,113.80 286.20,325.80 325.80,286.20 113.80,74.20"/></g>
+</svg>

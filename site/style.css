@@ -1,0 +1,410 @@
+/*
+ * Styx. One idea: the horizon, and the river on it. Above is day, below is night. Long lives above,
+ * short lives below, the pool is the line — the Styx between two worlds, drawn as a sodium river.
+ * All UI is one white layer drawn in difference mode, so text, charts and the accent invert as they cross:
+ *   --fg     -> near-black above, pale grey below
+ *   --signal -> cobalt above (#1E2BD6), sodium below (#BAAF07)
+ *   the river (sodium in the world layer) turns cobalt wherever UI ink crosses it, as in the logo and banner
+ *   #000     -> a hole that shows the world: use it to mask what scrolls under
+ * Brand: inverse-rh/brand/README.md (mark, banner, wordmark: Anybody 900 at width 150).
+ */
+:root {
+  --day: #e6eaf0;
+  --ink: #0e1013;
+  --fg: #f2f4f7;
+  --dim: #8a8f96;
+  --line: rgba(242, 244, 247, 0.2);
+  --signal: #c8bf1a;
+  --hole: #000;
+
+  --h: 50vh; /* where the horizon sits */
+  --hdr: 56px;
+  --lane: 18px;
+  --tk-h: 344px;
+  --tk-w: 320px;
+  --gut: clamp(16px, 4vw, 48px);
+
+  --display: "Anybody", "Arial Narrow", sans-serif;
+  --body: "Instrument Sans", system-ui, sans-serif;
+  --mono: "Martian Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--ink); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font: 400 15px/1.5 var(--body);
+  font-stretch: 94%;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- the world ---------- */
+.world { position: fixed; inset: 0; z-index: -1; background: var(--ink); }
+.day { height: var(--h); background: var(--day); transition: height 0.7s cubic-bezier(0.7, 0, 0.2, 1); }
+/* the river: sodium on the horizon, cobalt under every letter that crosses it */
+.river {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--h) - 2px);
+  height: 4px;
+  background: var(--signal);
+  transition: top 0.7s cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+#ui {
+  mix-blend-mode: difference;
+  color: var(--fg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a { color: inherit; text-decoration: none; }
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.32; cursor: not-allowed; }
+:focus-visible { outline: 1px solid currentColor; outline-offset: 3px; }
+input {
+  font: inherit;
+  color: inherit;
+  background: var(--hole);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 6px 0;
+  caret-color: var(--signal);
+  width: 100%;
+}
+input::placeholder { color: var(--dim); }
+input:focus { outline: none; border-bottom-color: var(--fg); }
+input[type="number"] { -moz-appearance: textfield; }
+input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.mono { font-family: var(--mono); font-stretch: 87.5%; font-size: 12px; letter-spacing: -0.01em; }
+.dim { color: var(--dim); }
+.signal { color: var(--signal); }
+sub { font-size: 0.72em; vertical-align: -0.25em; line-height: 0; }
+
+/* ---------- header ---------- */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--hdr);
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 0 var(--gut);
+  background: var(--hole);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 900 22px/1 var(--display);
+  font-stretch: 150%;
+  letter-spacing: -0.02em;
+}
+.brand .logo { width: 26px; height: 26px; fill: currentColor; flex: none; }
+nav { display: flex; gap: 22px; flex: 1; font-size: 14px; }
+nav a { color: var(--dim); }
+nav a:hover, nav a.on { color: var(--fg); }
+.acct { display: flex; align-items: center; gap: 14px; font-size: 13px; }
+.txt { border-bottom: 1px solid currentColor; padding-bottom: 1px; }
+#claim { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ---------- the tape runs along the foot of the first screen: longs on the upper lane, shorts on the lower ---------- */
+.tape { position: fixed; left: 0; right: 0; top: calc(100dvh - var(--lane) * 2); height: calc(var(--lane) * 2); z-index: 10; pointer-events: none; }
+/* the tape belongs to the front page's first screen; anywhere else it would hide whatever sits on the line */
+body:not([data-page="markets"]) .tape, body.scrolled .tape { opacity: 0; visibility: hidden; }
+.tape { transition: opacity 0.3s, visibility 0.3s; }
+.lane { height: var(--lane); overflow: hidden; background: var(--hole); white-space: nowrap; }
+.run { display: inline-flex; gap: 40px; font: 400 10.5px/var(--lane) var(--mono); font-stretch: 87.5%; padding-left: 100%; }
+.above .run { animation: drift 70s linear infinite; }
+.below .run { animation: drift 70s linear infinite reverse; }
+.run span b { font-weight: 600; }
+@keyframes drift { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+/* ---------- layout ---------- */
+main { flex: 1; width: 100%; padding: 0 var(--gut) 120px; }
+footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px 24px;
+  flex-wrap: wrap;
+  padding: 28px var(--gut);
+  color: var(--dim);
+  border-top: 1px solid var(--line);
+  background: var(--hole);
+}
+footer span:first-child { color: var(--fg); letter-spacing: 0.06em; }
+.ca { color: var(--fg); }
+.ca button { overflow-wrap: anywhere; text-align: left; }
+.pitch .ca { display: block; margin: 0 0 22px; font-size: 13px; }
+
+.eyebrow { font: 500 10.5px/1.4 var(--mono); font-stretch: 87.5%; text-transform: uppercase; letter-spacing: 0.12em; color: var(--dim); }
+
+/* ---------- hero: the banner. STYX straddles the river, the corners say what it is ---------- */
+.hero {
+  position: relative;
+  height: calc(100dvh - var(--hdr));
+  min-height: 460px;
+  margin: 0 calc(var(--gut) * -1);
+  overflow: hidden;
+}
+.hero-chart { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.16; }
+.hero-chart polyline { fill: none; stroke: currentColor; stroke-width: 2.4; vector-effect: non-scaling-stroke; }
+.styx {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--h) - var(--hdr));
+  transform: translate(-50%, -50%);
+  margin: 0;
+  font: 900 clamp(44px, 20.5vw, 360px)/1 var(--display); /* the wordmark is ~4.3 em wide at width 150 */
+  font-stretch: 150%;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.hero .eyebrow { position: absolute; color: var(--fg); font-size: clamp(10.5px, 1.05vw, 14px); }
+.h-tl { left: var(--gut); top: clamp(24px, 6vh, 64px); }
+.h-tr { right: var(--gut); top: clamp(24px, 6vh, 64px); text-align: right; }
+.h-bl { left: var(--gut); bottom: calc(var(--lane) * 2 + clamp(24px, 6vh, 64px)); }
+.h-br { right: var(--gut); bottom: calc(var(--lane) * 2 + clamp(24px, 6vh, 64px)); text-align: right; }
+
+/* ---------- pitch: what it is, in four lines, then the long/short balance of open money ---------- */
+.pitch { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 28px 56px; padding: 64px 0 40px; }
+.pitch-lead { grid-column: 1 / -1; margin: 0; font: 500 clamp(19px, 2vw, 26px)/1.35 var(--body); max-width: 46ch; }
+.pitch-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; font-size: 12.5px; line-height: 1.55; }
+.pitch-points li { padding-left: 18px; position: relative; }
+.pitch-points li::before { content: "—"; position: absolute; left: 0; color: var(--signal); }
+.pitch-points b { font-weight: 600; color: var(--fg); }
+.balance { display: flex; flex-direction: column; justify-content: end; gap: 0; }
+.bw {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2em;
+  font: 880 clamp(56px, 8vw, 120px)/0.86 var(--display);
+  letter-spacing: -0.04em;
+  transition: font-stretch 1.2s cubic-bezier(0.7, 0, 0.2, 1);
+}
+.bw .arrow { font-weight: 300; font-stretch: 50%; }
+.balance p { margin: 12px 0 0; font-size: 11.5px; max-width: 40ch; }
+
+/* ---------- ledger: stats as one line of figures ---------- */
+.ledger { display: flex; flex-wrap: wrap; gap: 10px 36px; padding: 22px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.ledger div { display: flex; flex-direction: column; gap: 2px; }
+.ledger b { font: 500 18px/1.2 var(--mono); font-stretch: 87.5%; }
+
+/* ---------- market list ---------- */
+.controls { display: flex; gap: 24px; align-items: end; margin: 44px 0 10px; flex-wrap: wrap; }
+.controls input { max-width: 440px; font-size: 16px; }
+.toggle { display: flex; gap: 16px; font-size: 14px; }
+.toggle button { color: var(--dim); }
+.toggle button.on { color: var(--fg); border-bottom: 1px solid currentColor; }
+.legend { margin: 0 0 18px; }
+
+.mkt-head, .mkt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px 76px 76px 84px 112px 52px 132px;
+  gap: 12px;
+  align-items: center;
+}
+.mkt-head { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.mkt-head span:not(:first-child), .mkt .r { text-align: right; }
+.mkt { padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.mkt:hover { background: rgba(242, 244, 247, 0.06); }
+.coin { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.coin img, .coin .ph { width: 22px; height: 22px; border-radius: 50%; flex: none; filter: grayscale(1) contrast(1.1); background: var(--line); object-fit: cover; }
+.coin .names { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.tk { font: 760 26px/1 var(--display); letter-spacing: -0.02em; white-space: nowrap; }
+.coin small { color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sides { display: flex; justify-content: flex-end; gap: 14px; font-size: 13px; }
+.sides button { border-bottom: 1px solid var(--line); }
+.sides button:hover:not(:disabled) { border-bottom-color: currentColor; }
+.closed { color: var(--dim); }
+/* mainnet showcase rows: real numbers, not tradable here; the tag says so before anything else */
+.tag {
+  display: inline-block;
+  font: 500 9px/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  padding: 3px 5px 2px;
+  border: 1px solid currentColor;
+  color: var(--signal);
+  flex: none;
+  align-self: center;
+}
+.mkt.soon { cursor: help; }
+.mkt.soon .sides span { white-space: nowrap; }
+
+/* ---------- coin page ---------- */
+body[data-page="coin"] main { padding-right: calc(var(--tk-w) + var(--gut) * 2); }
+.c-head { padding: 40px 0 18px; display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; }
+.c-tk { font: 880 clamp(56px, 9vw, 132px)/0.85 var(--display); letter-spacing: -0.04em; margin: 0; overflow-wrap: anywhere; }
+.c-name { margin: 12px 0 0; }
+.c-px { text-align: right; }
+.c-px .big { font: 400 clamp(28px, 3.4vw, 44px)/1 var(--mono); font-stretch: 87.5%; letter-spacing: -0.03em; }
+.chart { position: relative; margin: 10px 0 0; }
+.chart canvas { width: 100%; height: 320px; display: block; }
+.facts { font-size: 17px; max-width: 60ch; margin: 22px 0 0; }
+.why { margin: 14px 0 0; color: var(--signal); }
+.section-t { font: 760 15px/1 var(--display); font-stretch: 125%; letter-spacing: 0.02em; text-transform: uppercase; margin: 56px 0 12px; }
+
+/* ---------- the ticket straddles the horizon: long above, stake on the line, short below ---------- */
+.ticket {
+  position: fixed;
+  z-index: 15;
+  right: var(--gut);
+  top: calc(var(--h) - var(--tk-h) / 2);
+  width: var(--tk-w);
+  height: var(--tk-h);
+  background: var(--hole);
+  border: 1px solid var(--fg);
+  transition: top 0.7s cubic-bezier(0.7, 0, 0.2, 1);
+}
+.ticket > * { position: absolute; left: 0; right: 0; padding: 0 18px; }
+.go {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 92px;
+  padding: 0 18px;
+  text-align: left;
+  width: 100%;
+}
+.go .lbl { display: flex; justify-content: space-between; align-items: baseline; font: 860 40px/1 var(--display); letter-spacing: -0.03em; font-stretch: 130%; }
+.go .lbl i { font-style: normal; font-weight: 300; font-stretch: 50%; }
+.go small { display: block; margin-top: 6px; color: var(--dim); }
+.go:hover:not(:disabled), .go:focus-visible { background: var(--fg); color: var(--hole); outline: none; }
+.go:hover:not(:disabled) small, .go:focus-visible small { color: inherit; }
+.t-long { top: 0; padding: 0; }
+.t-short { bottom: 0; padding: 0; }
+.t-lev { top: calc(50% - 64px); display: flex; justify-content: space-between; align-items: center; }
+.levs { display: flex; gap: 14px; }
+.levs button { font: 500 13px/1 var(--mono); color: var(--dim); padding: 4px 0; }
+.levs button.on { color: var(--signal); border-bottom: 1px solid currentColor; }
+.t-stake { top: calc(50% - 24px); height: 48px; display: flex; align-items: center; gap: 10px; }
+.t-stake input { font: 400 34px/1 var(--mono); font-stretch: 87.5%; letter-spacing: -0.04em; text-align: right; padding: 0; border: 0; height: 48px; }
+.t-stake span { font-size: 13px; }
+.t-exit { top: calc(50% + 34px); display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.t-exit input { font-size: 12px; padding: 4px 0; }
+.t-closed { top: calc(50% - 20px); color: var(--signal); }
+
+/* ---------- lists ---------- */
+.rows { border-top: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: minmax(0, 1.4fr) 1fr 0.8fr 1fr 1fr 1.1fr 84px; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.row .r { text-align: right; }
+.row button { border-bottom: 1px solid currentColor; font-size: 13px; }
+.empty { color: var(--dim); padding: 18px 0; }
+
+.page-t { font: 880 clamp(48px, 8vw, 112px)/0.85 var(--display); font-stretch: 140%; letter-spacing: -0.04em; margin: 44px 0 18px; }
+.lead { font-size: 17px; max-width: 58ch; margin: 0 0 28px; }
+
+.pool-chart canvas { width: 100%; height: 240px; display: block; margin-top: 26px; }
+
+.board { counter-reset: n; }
+.board .row { grid-template-columns: 40px minmax(0, 1fr) auto; }
+
+.how dl { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); margin: 0; max-width: 980px; }
+.how dt, .how dd { padding: 18px 0; border-top: 1px solid var(--line); margin: 0; }
+.how dt { font: 760 19px/1.2 var(--display); font-stretch: 118%; letter-spacing: -0.01em; padding-right: 24px; }
+.how dd { font-size: 16px; }
+
+/* ---------- toast ---------- */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: var(--fg);
+  color: var(--hole);
+  padding: 12px 18px;
+  font: 500 12px/1.4 var(--mono);
+  max-width: min(92vw, 560px);
+  display: none;
+}
+#toast.err::before { content: "× "; }
+
+/* ---------- Real mode ---------- */
+.rnote { margin: 10px 0 0; max-width: 72ch; line-height: 1.7; }
+.rnote .dim { display: block; }
+.pulse { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.money { display: flex; align-items: end; gap: 22px; flex-wrap: wrap; margin: 0 0 12px; }
+.money button { font-size: 14px; }
+.amt { display: flex; align-items: center; gap: 10px; width: min(260px, 100%); }
+.amt input { font: 400 28px/1 var(--mono); font-stretch: 87.5%; letter-spacing: -0.04em; text-align: right; padding: 2px 0; }
+.amt span { font-size: 13px; }
+.sess { font-size: 13px; line-height: 1.7; max-width: 72ch; }
+.sess p { margin: 0 0 10px; }
+.sess button { font-size: 13px; margin-right: 16px; }
+.big-act { font: 760 22px/1.2 var(--display); font-stretch: 125%; }
+
+/* wallet picker: a hole in the world, outlined in ink */
+.sheet { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(0, 0, 0, 0.55); }
+.sheet[hidden] { display: none; }
+.sheet-box { background: var(--hole); border: 1px solid var(--fg); padding: 22px; width: min(360px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 4px; }
+.sheet-box .eyebrow { margin: 0 0 10px; }
+.sheet-box .q { margin: 0 0 8px; font-size: 14px; line-height: 1.5; }
+.w-pick { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; text-align: left; }
+.w-pick:hover { color: var(--signal); }
+.w-pick img { width: 24px; height: 24px; filter: grayscale(1); }
+.sheet-box [data-x] { align-self: flex-start; margin-top: 12px; font-size: 13px; }
+
+/* ---------- small screens ---------- */
+@media (max-width: 1000px) {
+  .mkt-head, .mkt { grid-template-columns: minmax(0, 1fr) 110px 70px 44px 112px; }
+  .mkt-head .x, .mkt .x { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr) 1fr 1fr 84px; }
+  .row .x { display: none; }
+}
+@media (max-width: 720px) {
+  :root { --tk-h: 296px; --gut: 16px; }
+  nav { display: none; }
+  .top { gap: 12px; justify-content: space-between; }
+  .acct { gap: 10px; }
+  .money { gap: 14px 22px; }
+  .amt { width: 100%; }
+  #bal { display: none; }
+  .mkt-head { display: none; }
+  .mkt { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
+  .mkt .r.p { grid-column: 2; }
+  .mkt .m { display: none; }
+  .mkt .sides { grid-column: 1 / -1; justify-content: flex-start; }
+  .pitch { grid-template-columns: 1fr; padding-top: 44px; }
+  .hero .eyebrow { max-width: 44vw; }
+  .h-tr, .h-br { text-align: right; }
+  .how dl { grid-template-columns: 1fr; }
+  .how dd { border-top: 0; padding-top: 0; }
+  /* on a phone the horizon drops to the ticket at the bottom */
+  body[data-page="coin"] { --h: calc(100dvh - var(--tk-h) / 2); }
+  body[data-page="coin"] main { padding-right: var(--gut); padding-bottom: calc(var(--tk-h) + 40px); }
+  .ticket { left: 0; right: 0; width: auto; border-left: 0; border-right: 0; border-bottom: 0; }
+  .go { height: 78px; }
+  .go .lbl { font-size: 32px; }
+  .c-px { text-align: left; }
+  .go .room { display: none; }
+  .chart canvas { height: 240px; }
+}
+/* a short laptop screen: keep the ticket inside the viewport */
+@media (max-height: 640px) and (min-width: 721px) {
+  :root { --tk-h: 300px; }
+  .go { height: 76px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run { animation: none !important; padding-left: 0; }
+  .pulse { animation: none; }
+  .day, .river, .tape, .ticket, .bw { transition: none; }
+}
+
+.mkt .mono { white-space: nowrap; }

@@ -1,0 +1,14 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "InversePool.sol": { "urls": ["InversePool.sol"] }
+  },
+  "settings": {
+    "viaIR": true,
+    "optimizer": { "enabled": true, "runs": 200 },
+    "evmVersion": "cancun",
+    "outputSelection": {
+      "*": { "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object"] }
+    }
+  }
+}

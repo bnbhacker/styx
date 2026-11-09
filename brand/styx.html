@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Styx · brand</title>
+<!--
+  Styx brand sheet. Every artboard renders at its exact size at the top-left corner when its id is
+  the URL hash (render.ps1 screenshots them with headless Chromium):
+    #mark-a #mark-b #mark-c   400×400   avatar candidates
+    #banner                   1500×500  X header
+    #wordmark                 1200×400
+    #sheet                    overview of everything
+  Idea: Styx is the river between two worlds. Here it is the line between long (day, above) and
+  short (night, below). Anything that crosses the line inverts.
+-->
+<style>
+  @font-face { font-family: "Anybody"; src: url("fonts/Anybody.ttf") format("truetype"); font-weight: 100 900; font-stretch: 50% 150%; }
+  @font-face { font-family: "Martian Mono"; src: url("fonts/MartianMono.ttf") format("truetype"); font-weight: 100 800; font-stretch: 75% 112.5%; }
+  @font-face { font-family: "Instrument Sans"; src: url("fonts/InstrumentSans.ttf") format("truetype"); font-weight: 400 700; font-stretch: 75% 100%; }
+  :root {
+    --day: #e6eaf0;
+    --night: #0e1013;
+    --sodium: #c8bf1a; /* accent; in difference mode it reads cobalt above the line */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #777; }
+  body { font-family: "Instrument Sans", system-ui, sans-serif; }
+  .board { position: relative; overflow: hidden; display: none; flex: none; }
+  body.solo .board.on { display: block; position: absolute; left: 0; top: 0; }
+  body.sheet .board { display: block; margin: 24px; box-shadow: 0 0 0 1px #0003; }
+  body.sheet { padding: 8px; display: flex; flex-wrap: wrap; align-items: flex-start; }
+
+  /* the world: day above the line, night below */
+  .world { position: absolute; inset: 0; background: var(--night); }
+  .world::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: var(--line, 50%); background: var(--day); }
+  .ink { position: absolute; color: #fff; mix-blend-mode: difference; }
+
+  /* ---------- banner 1500×500 ---------- */
+  #banner { width: 1500px; height: 500px; --line: 250px; }
+  #banner .word {
+    left: 50%; top: 250px; transform: translate(-50%, -50%);
+    font-family: "Anybody"; font-weight: 900; font-stretch: 150%; font-size: 300px; line-height: 1; letter-spacing: -6px;
+    white-space: nowrap;
+  }
+  #banner .mono { font-family: "Martian Mono"; font-size: 17px; letter-spacing: 0.5px; font-stretch: 100%; font-weight: 400; text-transform: uppercase; }
+  #banner .tl { left: 470px; top: 46px; }
+  #banner .tr { right: 64px; top: 46px; text-align: right; }
+  #banner .bl { left: 470px; bottom: 46px; }
+  #banner .br { right: 64px; bottom: 46px; text-align: right; }
+  #banner .chart { position: absolute; inset: 0; mix-blend-mode: difference; opacity: 0.16; }
+  /* the river: sodium on the line; under the inverted letters it reads cobalt */
+  .river { position: absolute; left: 0; right: 0; height: 6px; background: var(--sodium); }
+  #banner .river { top: 247px; }
+  #wordmark .river { top: 197px; height: 5px; }
+
+  /* ---------- wordmark 1200×400 ---------- */
+  #wordmark { width: 1200px; height: 400px; --line: 200px; }
+  #wordmark .word {
+    left: 50%; top: 200px; transform: translate(-50%, -50%);
+    font-family: "Anybody"; font-weight: 900; font-stretch: 150%; font-size: 250px; line-height: 1; letter-spacing: -5px;
+  }
+
+  .mark { width: 400px; height: 400px; }
+
+  /* ---------- launch post 1600×900 (X, 16:9): "styxperps.xyz is live" ---------- */
+  #post { width: 1600px; height: 900px; --line: 450px; }
+  #post .chart { position: absolute; inset: 0; mix-blend-mode: difference; opacity: 0.14; }
+  #post .river { top: 446px; height: 8px; }
+  #post .word {
+    /* the glyphs sit ~11 px right of the box centre (side bearings): pull them back onto the axis */
+    left: 50%; top: 450px; transform: translate(calc(-50% - 11px), -50%);
+    font-family: "Anybody"; font-weight: 900; font-stretch: 150%; font-size: 336px; line-height: 1; letter-spacing: -7px;
+    white-space: nowrap;
+  }
+  #post .mono { font-family: "Martian Mono"; font-stretch: 100%; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+  #post .corner { font-size: 25px; }
+  #post .tl { left: 64px; top: 60px; }
+  #post .tr { right: 64px; top: 60px; text-align: right; }
+  #post .bl { left: 64px; bottom: 60px; }
+  #post .br { right: 64px; bottom: 60px; text-align: right; }
+  /* the headline sits in the day, the promise in the night */
+  #post .live { left: 50%; top: 168px; transform: translateX(-50%); font-size: 46px; font-weight: 600; display: flex; align-items: center; gap: 22px; }
+  #post .live i { width: 22px; height: 22px; border-radius: 50%; background: #fff; display: block; }
+  #post .promise { left: 50%; bottom: 168px; transform: translateX(-50%); font-size: 30px; }
+</style>
+</head>
+<body>
+
+<!-- ===== avatar candidates: pure geometry, no fonts ===== -->
+<div class="board mark" id="mark-a"></div>
+<div class="board mark" id="mark-b"></div>
+<div class="board mark" id="mark-c"></div>
+<div class="board mark" id="mark-d"></div>
+<div class="board mark" id="mark-e"></div>
+
+<!-- ===== X banner ===== -->
+<div class="board" id="banner">
+  <div class="world"></div>
+  <svg class="chart" viewBox="0 0 1500 500" preserveAspectRatio="none" aria-hidden="true">
+    <!-- a price rising above the line, a price falling below it -->
+    <polyline fill="none" stroke="#fff" stroke-width="3" points="0,232 90,214 160,224 240,180 320,196 400,150 470,168 560,118 640,132 720,84 800,98 880,60 960,74 1040,36 1130,52 1220,18 1310,30 1400,6 1500,-10" />
+    <polyline fill="none" stroke="#fff" stroke-width="3" points="0,268 90,286 160,276 240,320 320,304 400,350 470,332 560,382 640,368 720,416 800,402 880,440 960,426 1040,464 1130,448 1220,482 1310,470 1400,494 1500,510" />
+  </svg>
+  <div class="river"></div>
+  <div class="ink word">STYX</div>
+  <div class="ink mono tl">↑ long any memecoin</div>
+  <div class="ink mono tr">perps for memes · on Elysium</div>
+  <div class="ink mono bl">↓ short any memecoin</div>
+  <div class="ink mono br">2x · 5x · 10x · against the pool</div>
+</div>
+
+<!-- ===== launch post (09.11.2026) ===== -->
+<div class="board" id="post">
+  <div class="world"></div>
+  <svg class="chart" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true">
+    <polyline fill="none" stroke="#fff" stroke-width="4" points="0,420 100,392 170,404 260,340 350,362 440,290 520,312 610,236 700,256 790,180 880,198 970,128 1060,146 1150,80 1250,98 1350,38 1450,52 1540,10 1600,-6" />
+    <polyline fill="none" stroke="#fff" stroke-width="4" points="0,480 100,508 170,496 260,560 350,538 440,610 520,588 610,664 700,644 790,720 880,702 970,772 1060,754 1150,820 1250,802 1350,862 1450,848 1540,890 1600,906" />
+  </svg>
+  <div class="river"></div>
+  <div class="ink word">STYX</div>
+  <div class="ink mono live"><i></i>styxperps.xyz is live</div>
+  <div class="ink mono promise">worst case = your stake · wins up to +200%</div>
+  <div class="ink mono corner tl">↑ long any memecoin</div>
+  <div class="ink mono corner tr">on Elysium · testnet first</div>
+  <div class="ink mono corner bl">↓ short any memecoin</div>
+  <div class="ink mono corner br">2x · 5x · 10x · against one pool</div>
+</div>
+
+<!-- ===== wordmark ===== -->
+<div class="board" id="wordmark">
+  <div class="world"></div>
+  <div class="river"></div>
+  <div class="ink word">STYX</div>
+</div>
+
+<script>
+  const DAY = "#e6eaf0", NIGHT = "#0e1013", SODIUM = "#c8bf1a";
+
+  // A bar from p to q with thickness t (square ends), as a polygon.
+  function bar([x1, y1], [x2, y2], t) {
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy);
+    const nx = (-dy / L) * (t / 2), ny = (dx / L) * (t / 2);
+    return [[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [x2 - nx, y2 - ny], [x1 - nx, y1 - ny]];
+  }
+  // An arrow from p to q: shaft of thickness t, head of width w and length h at q.
+  function arrow([x1, y1], [x2, y2], t, w, h) {
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
+    const bx = x2 - ux * h, by = y2 - uy * h; // base of the head
+    const nx = -uy, ny = ux;
+    return [
+      [x1 + nx * t / 2, y1 + ny * t / 2], [bx + nx * t / 2, by + ny * t / 2], [bx + nx * w / 2, by + ny * w / 2],
+      [x2, y2],
+      [bx - nx * w / 2, by - ny * w / 2], [bx - nx * t / 2, by - ny * t / 2], [x1 - nx * t / 2, y1 - ny * t / 2],
+    ];
+  }
+  const pts = (p) => p.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+
+  /**
+   * The mark: day above the line, night below, and an X whose two strokes are a price going up
+   * (long) and a price going down (short), crossing exactly on the line. Each half of the X takes
+   * the colour of the other world, so it inverts as it crosses — the same rule as the site.
+   */
+  function markSVG(S, variant) {
+    const c = S / 2, m = S * 0.205, t = S * 0.15;
+    let shapes;
+    if (variant === "a") {
+      shapes = [bar([m, S - m], [S - m, m], t), bar([m, m], [S - m, S - m], t)];
+    } else if (variant === "b") {
+      const w = t * 2.25, h = t * 1.55;
+      shapes = [arrow([m, S - m], [S - m + t * 0.25, m - t * 0.25], t, w, h), arrow([m, m], [S - m + t * 0.25, S - m + t * 0.25], t, w, h)];
+    } else if (variant === "c") {
+      // c: the rising stroke carries an arrowhead (long), the falling stroke is a plain bar,
+      // and a thin sodium line marks the river itself.
+      const w = t * 2.25, h = t * 1.55;
+      shapes = [arrow([m, S - m], [S - m + t * 0.25, m - t * 0.25], t, w, h), bar([m, m], [S - m, S - m], t)];
+    } else if (variant === "d") {
+      // d: both strokes are arrows pointing right (time runs right): one rises, one falls.
+      // Compact enough to survive X's circular avatar crop; the river runs through the crossing.
+      const md = S * 0.255, td = S * 0.13, w = td * 2.1, h = td * 1.35;
+      shapes = [arrow([md, S - md], [S - md + td * 0.55, md - td * 0.55], td, w, h), arrow([md, md], [S - md + td * 0.55, S - md + td * 0.55], td, w, h)];
+    } else {
+      // e: the plain X with the river.
+      const me = S * 0.235, te = S * 0.14;
+      shapes = [bar([me, S - me], [S - me, me], te), bar([me, me], [S - me, S - me], te)];
+    }
+    const poly = shapes.map((s) => `<polygon points="${pts(s)}"/>`).join("");
+    const river = "cde".includes(variant) ? `<rect x="0" y="${c - S * 0.006}" width="${S}" height="${S * 0.012}" fill="${SODIUM}"/>` : "";
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" width="${S}" height="${S}">
+  <defs>
+    <clipPath id="up-${variant}"><rect x="0" y="0" width="${S}" height="${c}"/></clipPath>
+    <clipPath id="dn-${variant}"><rect x="0" y="${c}" width="${S}" height="${c}"/></clipPath>
+  </defs>
+  <rect width="${S}" height="${c}" fill="${DAY}"/>
+  <rect y="${c}" width="${S}" height="${c}" fill="${NIGHT}"/>
+  ${river}
+  <g clip-path="url(#up-${variant})" fill="${NIGHT}">${poly}</g>
+  <g clip-path="url(#dn-${variant})" fill="${DAY}">${poly}</g>
+</svg>`;
+  }
+  window.markSVG = markSVG;
+  for (const v of ["a", "b", "c", "d", "e"]) document.getElementById("mark-" + v).innerHTML = markSVG(400, v);
+
+  const id = location.hash.slice(1);
+  if (!id || id === "sheet") document.body.classList.add("sheet");
+  else {
+    document.body.classList.add("solo");
+    document.getElementById(id)?.classList.add("on");
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Styx mark: a rising arrow (long) and a falling arrow (short) crossing on the river.
+       Day above the line, night below; each half of the arrows takes the other world's colour. -->
+  <defs>
+    <clipPath id="up-d"><rect x="0" y="0" width="400" height="200"/></clipPath>
+    <clipPath id="dn-d"><rect x="0" y="200" width="400" height="200"/></clipPath>
+  </defs>
+  <rect width="400" height="200" fill="#e6eaf0"/>
+  <rect y="200" width="400" height="200" fill="#0e1013"/>
+  <rect x="0" y="197.6" width="400" height="4.8" fill="#c8bf1a"/>
+  <g clip-path="url(#up-d)" fill="#0e1013"><polygon points="120.38,316.38 295.35,141.42 315.57,161.65 326.60,73.40 238.35,84.43 258.58,104.65 83.62,279.62"/><polygon points="83.62,120.38 258.58,295.35 238.35,315.57 326.60,326.60 315.57,238.35 295.35,258.58 120.38,83.62"/></g>
+  <g clip-path="url(#dn-d)" fill="#e6eaf0"><polygon points="120.38,316.38 295.35,141.42 315.57,161.65 326.60,73.40 238.35,84.43 258.58,104.65 83.62,279.62"/><polygon points="83.62,120.38 258.58,295.35 238.35,315.57 326.60,326.60 315.57,238.35 295.35,258.58 120.38,83.62"/></g>
+</svg>

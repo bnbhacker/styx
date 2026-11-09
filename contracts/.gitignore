@@ -1,0 +1,8 @@
+forge-out/
+forge-cache/
+# the v1.0 solc-js output of 29.10 (README "Сборка без forge"); the engine's ABI is engine/abi/InversePool.json
+out/
+# forge script runs (local anvil deploys must never look like real ones)
+broadcast/
+cache/
+# lib/forge-std is a git submodule (foundry-rs/forge-std v1.9.7): git submodule update --init

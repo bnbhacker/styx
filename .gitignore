@@ -1,0 +1,16 @@
+# Runtime state of the engine (paper books, keeper journals): made by the running engine, never in git
+engine/data/
+
+# Vercel project link (site/deploy.ps1 makes it on the first deploy)
+.vercel/
+
+# Secrets never live in this repo: keeper keystores and passphrases stay in %USERPROFILE%\.foundry and \.styx
+.env
+.env.*
+*.pass
+keystore*/
+
+node_modules/
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+# The sources are written with LF; keep them LF on every checkout (Windows autocrlf included)
+* text=auto eol=lf
+*.png binary
+*.ttf binary

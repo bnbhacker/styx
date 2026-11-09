@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Styx · perps for memes on Elysium</title>
+  <meta name="description" content="Styx: long or short any Elysium memecoin at 2x, 5x or 10x against one pool. The worst case is your stake." />
+  <meta property="og:title" content="Styx · perps for memes on Elysium" />
+  <meta property="og:description" content="Long or short any Elysium memecoin at 2x, 5x or 10x against one pool. The worst case is your stake." />
+  <meta property="og:image" content="/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="theme-color" content="#0e1013" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,300..900&family=Instrument+Sans:wdth,wght@75..100,400..700&family=Martian+Mono:wdth,wght@75..112.5,300..600&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body data-page="markets">
+  <!-- The world: day above the horizon, night below, and the river (Styx) on the line. Everything in #ui is drawn
+       in difference mode, so it inverts as it crosses the line, and the sodium river turns cobalt under it. -->
+  <div class="world" aria-hidden="true"><div class="day"></div><div class="river"></div></div>
+
+  <div id="ui">
+    <header class="top">
+      <a class="brand" href="#/" aria-label="Styx, markets">
+        <!-- the mark, one ink: a rising arrow (long) and a falling arrow (short) crossing on the river -->
+        <svg class="logo" viewBox="0 0 400 400" aria-hidden="true">
+          <polygon points="120.38,316.38 295.35,141.42 315.57,161.65 326.60,73.40 238.35,84.43 258.58,104.65 83.62,279.62" />
+          <polygon points="83.62,120.38 258.58,295.35 238.35,315.57 326.60,326.60 315.57,238.35 295.35,258.58 120.38,83.62" />
+          <rect x="0" y="190" width="400" height="20" />
+        </svg>
+        <span>STYX</span>
+      </a>
+      <nav>
+        <a href="#/">Markets</a>
+        <a href="#/portfolio">Portfolio</a>
+        <a href="#/pool">Pool</a>
+        <a href="#/wins">Wins</a>
+        <a href="#/how">How it works</a>
+      </nav>
+      <div class="acct">
+        <span id="bal" class="mono">—</span>
+        <button id="claim" class="txt">Claim</button>
+      </div>
+    </header>
+
+    <div class="tape" aria-label="Live trades">
+      <div class="lane above"><div class="run" id="lane-long"></div></div>
+      <div class="lane below"><div class="run" id="lane-short"></div></div>
+    </div>
+
+    <main id="app"></main>
+
+    <footer class="mono" id="foot">
+      <span>STYX · perps for memes on Elysium</span>
+      <span id="foot-mode">Real mode</span>
+    </footer>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <div id="sheet" class="sheet" hidden></div>
+  </div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
