@@ -189,3 +189,92 @@ export function rugPlan(samples, { head, windowBlocks, dropBps }) {
   if (head - blockAfter > 40n) return null; // stale: the contract wants a fresh blockAfter
   return { ...best, after, blockAfter };
 }
+
+// ───────────────────────────── insider shorts (STYX-ELYSIUM §3.2) ─────────────────────────────
+
+/**
+ * F: the share of a coin's supply held by its insiders = the ten largest holders plus everyone the supply was minted
+ * to, not counting what sits in pools, lockers, burn addresses and the bridge (`exclude`). Excluded balances still
+ * count in the supply: a coin that is 80 % in its pool has at most 20 % with insiders.
+ * balances: Map(address -> BigInt), minted: iterable of mint recipients, exclude: Set of lowercase addresses.
+ * -> { share (0..1), holders: [[address, share]] largest first } | null if there is no supply
+ */
+export function insiderShare(balances, { minted = [], exclude = new Set(), top = 10 } = {}) {
+  let supply = 0n;
+  const free = [];
+  for (const [a, b] of balances) {
+    if (b <= 0n) continue;
+    supply += b;
+    if (!exclude.has(a)) free.push([a, b]);
+  }
+  if (supply === 0n) return null;
+  free.sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0));
+  const picked = new Map(free.slice(0, top));
+  for (const a of minted) {
+    const b = balances.get(a);
+    if (b > 0n && !exclude.has(a)) picked.set(a, b);
+  }
+  let held = 0n;
+  for (const b of picked.values()) held += b;
+  const part = (b) => Number((b * 1_000_000n) / supply) / 1e6;
+  const holders = [...picked].sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0)).map(([a, b]) => [a, part(b)]);
+  return { share: part(held), holders };
+}
+
+/**
+ * What shorts of a coin may do given F. Up to 20 %: no limit. 20–40 %: at most 5x and half the short notional.
+ * Above 40 %: at most 2x and the shorts' summed max win at most 1 % of the pool. An unknown F (holders not counted
+ * yet, or the count failed) gets the strictest tier: the pool does not lend its balance sheet to a coin it cannot see.
+ * -> { tier, maxLev, notionalDiv, maxWinPoolBps (0 = no extra limit) }
+ */
+export function insiderTier(share) {
+  if (share != null && share <= 0.2) return { tier: 0, maxLev: 10, notionalDiv: 1n, maxWinPoolBps: 0n };
+  if (share != null && share <= 0.4) return { tier: 1, maxLev: 5, notionalDiv: 2n, maxWinPoolBps: 0n };
+  return { tier: 2, maxLev: 2, notionalDiv: 1n, maxWinPoolBps: 100n };
+}
+
+/**
+ * Does the insider limit refuse this short? pos: the pending short; tier: insiderTier(); shortMaxWin: the market's
+ * open shorts' summed max win; poolBase: min(poolCash, nav); maxWinBps: the pool's win cap. -> true = INSIDER_SHORT
+ */
+export function insiderRefuses(pos, tier, { shortMaxWin, poolBase, maxWinBps }) {
+  if (pos.isLong || tier.tier === 0) return false;
+  if (Number(pos.leverage) > tier.maxLev) return true;
+  if (tier.maxWinPoolBps === 0n) return false;
+  const win = (BigInt(pos.stake) * BigInt(maxWinBps)) / BPS;
+  return (BigInt(shortMaxWin) + win) * BPS > BigInt(poolBase) * tier.maxWinPoolBps;
+}
+
+// ───────────────────────────── wallet clusters (STYX-ELYSIUM §3.2) ─────────────────────────────
+
+/**
+ * Wallets with common funding count as one trader. links: Map(wallet -> its first funder | null). A funder that is
+ * excluded (bridge, exchange hot wallet, solver: `exclude`) or that funded more than `hub` wallets links nobody: on RH
+ * a Relay solver glued strangers together that way. A wallet funded by another wallet joins it; two wallets with the
+ * same funder join each other. -> Map(wallet -> cluster id), every wallet of `links` and every linking funder included
+ */
+export function clusters(links, { exclude = new Set(), hub = 8 } = {}) {
+  const fanout = new Map();
+  for (const f of links.values()) if (f) fanout.set(f, (fanout.get(f) || 0) + 1);
+  const parent = new Map();
+  const find = (a) => {
+    if (!parent.has(a)) parent.set(a, a);
+    let r = a;
+    while (parent.get(r) !== r) r = parent.get(r);
+    for (let x = a; parent.get(x) !== r; ) {
+      const n = parent.get(x);
+      parent.set(x, r);
+      x = n;
+    }
+    return r;
+  };
+  for (const [w, f] of links) {
+    const rw = find(w);
+    if (!f || f === w || exclude.has(f) || fanout.get(f) > hub) continue;
+    const rf = find(f);
+    if (rw !== rf) parent.set(rw < rf ? rf : rw, rw < rf ? rw : rf); // the smaller address names the cluster
+  }
+  const out = new Map();
+  for (const a of parent.keys()) out.set(a, find(a));
+  return out;
+}

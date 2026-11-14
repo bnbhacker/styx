@@ -12,6 +12,9 @@
  * getPosition), not reconstructed from logs, so a missed log cannot desync the book.
  * Without a usable key (or while the key is not a keeper: isKeeper is re-read every 30 s) it runs as a read-only
  * observer: the book and every listed market's bound pool are still synced for the site, nothing is signed.
+ * Guards (14.11.2026): wallets with common funding trade as one (funding.mjs), shorts of a coin whose supply sits with
+ * a few holders are limited (holders.mjs), and an optional second key (KEEPER2_*) sends the defensive transactions
+ * from its own nonce stream, so a stop-loss never queues behind a fill.
  * Review 06.11.2026 fixes are marked [R].
  */
 import { createWalletClient, http, ContractFunctionRevertedError, BaseError, zeroAddress } from "viem";
@@ -21,13 +24,20 @@ import { client, net } from "../chain.mjs";
 import * as M from "../markets.mjs";
 import { loadKeeperKey } from "./keystore.mjs";
 import * as D from "./decide.mjs";
+import * as Holders from "./holders.mjs";
+import * as Funding from "./funding.mjs";
+import { onDeposit } from "./ledger.mjs";
 
 import { POOL_ABI, SRC_ABI, ABI } from "../abi.mjs";
 
 const REASON = { USER: 0, TP: 1, SL: 2, CAP_WIN: 3, CAP_LOSS: 4, RUG: 5, POOL_GONE: 6, EMERGENCY: 7 };
 const OPEN_REASON = 255;
 const ST = { None: 0, PendingOpen: 1, Open: 2, PendingClose: 3, Closed: 4, Cancelled: 5 };
-const ENGINE_LAG = 40n; // blocks: older than this the engine's prices are not fresh enough to act on (maxPriceAge 50)
+/**
+ * Blocks: an engine further behind the chain than this holds prices too old to act on. Four fifths of the pool's
+ * maxPriceAgeBlocks (40 of the testnet's 50; the mainnet, with slower blocks, sets fewer).
+ */
+const engineLag = () => (BigInt(K.params?.maxPriceAgeBlocks ?? 50) * 4n) / 5n;
 const WARMUP_MS = (CFG.rules.twapS + 5) * 1000; // [R] the 30-s average must hold live samples only
 const lc = (a) => (a || "").toLowerCase();
 const nowS = () => Math.floor(Date.now() / 1000);
@@ -38,6 +48,7 @@ export const K = {
   enabled: false, // this engine signs as the keeper (isKeeper is re-read every 30 s)
   observer: false, // STYX_POOL without a usable key, or the key is not (or no longer) a keeper: read-only book
   address: null,
+  defensive: null, // address of the second key while it is a keeper of the pool (defensive lane), else null
   pool: CFG.pool,
   adapter: null,
   params: null,
@@ -67,6 +78,8 @@ export const K = {
 
 let wallet;
 let account;
+let wallet2; // the defensive lane (KEEPER2_*): TP / SL / caps / RUG / flagRug / disable, on its own nonces
+let account2;
 let roleAt = 0; // ms of the last isKeeper read (0 = due on the next loop pass)
 const inflight = new Map(); // key -> expiry ms (set only once a tx is really out)
 
@@ -92,7 +105,7 @@ const isRevert = (name) => /^[A-Z][A-Za-z]+$/.test(name) && !/^(HttpRequestError
 const read = (functionName, args = [], address = K.pool, abi = ABI) => client.readContract({ address, abi, functionName, args });
 
 const engineFresh = () =>
-  M.state.ready && K.chainHead - M.state.head <= ENGINE_LAG && Date.now() - M.state.lastPoll < 5_000;
+  M.state.ready && K.chainHead - M.state.head <= engineLag() && Date.now() - M.state.lastPoll < 5_000;
 const warm = () => K.readySince && Date.now() - K.readySince > WARMUP_MS;
 
 // ───────────────────────────── sending ─────────────────────────────
@@ -102,13 +115,16 @@ const warm = () => K.readySince && Date.now() - K.readySince > WARMUP_MS;
  * after the tx is out [R], and lasts until its receipt (or lockMs).
  * -> { ok: true, hash } | { ok: false, error }
  */
-async function send(key, functionName, args, tip, { address = K.pool, abi = ABI, lockMs = 15_000 } = {}) {
+async function send(key, functionName, args, tip, { address = K.pool, abi = ABI, lockMs = 15_000, defensive = false } = {}) {
   if (!K.enabled || !wallet) return { ok: false, error: "not the keeper" }; // [R] a revoked key sends nothing
   const until = inflight.get(key);
   if (until && until > Date.now()) return { ok: false, error: "inflight" };
+  // the defensive lane signs with the second key while it is a keeper; otherwise everything goes through the main key
+  const second = defensive && !!K.defensive && !!wallet2;
+  const from = second ? account2 : account;
   let request;
   try {
-    ({ request } = await client.simulateContract({ account, address, abi, functionName, args }));
+    ({ request } = await client.simulateContract({ account: from, address, abi, functionName, args }));
   } catch (e) {
     const error = errName(e);
     if (error === "Unauthorized") roleAt = 0; // [R] maybe revoked: re-read isKeeper on the next pass
@@ -116,7 +132,7 @@ async function send(key, functionName, args, tip, { address = K.pool, abi = ABI,
   }
   try {
     const fee = K.baseFee != null ? { maxPriorityFeePerGas: tip, maxFeePerGas: K.baseFee * 2n + tip } : {};
-    const hash = await wallet.writeContract({ ...request, ...fee });
+    const hash = await (second ? wallet2 : wallet).writeContract({ ...request, ...fee });
     inflight.set(key, Date.now() + lockMs);
     K.sent++;
     K.sentThisTick++;
@@ -216,6 +232,7 @@ async function syncPositions() {
         return;
       }
       K.positions.set(id, { ...p, id, status });
+      if (K.enabled && status === ST.PendingOpen) Funding.warm(p.trader); // its cluster is needed before the fill
     });
   }
   K.nextId = firstNone != null && firstNone >= K.nextId ? firstNone : count + 1n;
@@ -266,7 +283,9 @@ export async function pinMarket(marketId) {
   try {
     const m = await market(BigInt(marketId));
     if (m.token === zeroAddress) return null; // not listed
-    return await coinOf(m);
+    const t = await coinOf(m);
+    if (t && K.enabled) Holders.track(m.token); // counted ahead of the first short
+    return t;
   } catch {
     return null;
   }
@@ -344,6 +363,37 @@ const windowOf = (pos) => {
   return { req, end: req + BigInt(K.params.maxExecDelayBlocks) };
 };
 
+// ───────────────────────────── guards ─────────────────────────────
+
+/**
+ * What shorts of a coin may do (decide.insiderTier) from the share of its supply with its largest holders. Until the
+ * holders are counted the strictest tier applies. `why` is the sentence the site shows.
+ */
+export function shortTier(token) {
+  Holders.track(token);
+  const h = Holders.shareOf(token);
+  const share = h?.state === "ready" ? h.share : null;
+  const tier = D.insiderTier(share);
+  const why =
+    share == null
+      ? `shorts limited to ${tier.maxLev}x: this coin's holders are ${h?.state === "failed" ? "not countable" : "still being counted"}`
+      : tier.tier
+        ? `shorts limited to ${tier.maxLev}x: ${Math.round(share * 100)}% of the supply sits with its largest holders`
+        : null;
+  return { ...tier, share, state: h?.state || "scanning", why };
+}
+
+let baseAt = 0;
+let baseVal = [0n, 0n];
+/** [poolCash, nav], read at most every 3 s. */
+async function poolBase() {
+  if (Date.now() - baseAt > 3_000) {
+    baseVal = await Promise.all([read("poolCash"), read("nav")]);
+    baseAt = Date.now();
+  }
+  return baseVal;
+}
+
 // ───────────────────────────── actions ─────────────────────────────
 
 async function handleOpen(pos) {
@@ -353,10 +403,19 @@ async function handleOpen(pos) {
   if (!warm()) return late ? reject(pos, D.CODES.MISSED_WINDOW, "keeper warming up") : null;
   const m = await market(BigInt(pos.marketId));
   const trader = lc(pos.trader);
+  // wallets with common funding are one trader: the account's age and the one-side rule are the cluster's. A wallet
+  // whose funder is still being looked up waits inside the window, and is refused at its end (the next request finds
+  // the answer cached): an unknown wallet must not slip past the cluster rules by being new.
+  if (!Funding.resolved(trader)) {
+    Funding.warm(trader);
+    return late ? reject(pos, D.CODES.MISSED_WINDOW, "the account check did not finish in the window") : null;
+  }
+  const cluster = Funding.clusterOf(trader);
   let firstSeenS = null;
   let opposite = false;
   for (const q of K.positions.values()) {
-    if (lc(q.trader) !== trader) continue;
+    const other = lc(q.trader);
+    if (other !== trader && (!Funding.resolved(other) || Funding.clusterOf(other) !== cluster)) continue;
     const at = Number(q.requestTime);
     if (q.id !== pos.id && (firstSeenS == null || at < firstSeenS)) firstSeenS = at;
     if (q.id !== pos.id && q.marketId === pos.marketId && q.isLong !== pos.isLong && q.status >= ST.PendingOpen && q.status <= ST.PendingClose) {
@@ -390,8 +449,20 @@ async function handleOpen(pos) {
     return code ? reject(pos, code, b.error) : late ? reject(pos, D.CODES.NO_PRICE, b.error) : null;
   }
   price = b.price;
-  const cap = D.notionalCap(t.d10 || 0, feePips(pl), CFG.rules.notionalPctOfD10);
-  const r = await send(`open:${pos.id}`, "executeOpen", [pos.id, price, eb.block, maxLev, cap], CFG.tips.exec);
+  let cap = D.notionalCap(t.d10 || 0, feePips(pl), CFG.rules.notionalPctOfD10);
+  let lev = maxLev;
+  if (!pos.isLong) {
+    // insider short limiter: how much of the supply sits with the largest holders decides what shorts may do
+    const tier = shortTier(m.token);
+    if (tier.tier) {
+      const [cash, navV] = await poolBase();
+      const lim = { shortMaxWin: BigInt(m.maxWinShort), poolBase: cash < navV ? cash : navV, maxWinBps: K.params.maxWinBps };
+      if (D.insiderRefuses(pos, tier, lim)) return reject(pos, D.CODES.INSIDER_SHORT, tier.why);
+      cap /= tier.notionalDiv;
+      lev = Math.min(lev, tier.maxLev);
+    }
+  }
+  const r = await send(`open:${pos.id}`, "executeOpen", [pos.id, price, eb.block, lev, cap], CFG.tips.exec);
   if (r.ok) {
     note("open", `#${pos.id} ${t.symbol} ${pos.isLong ? "long" : "short"} ${pos.leverage}x at ${D.fromWad(price)} (block ${eb.block})`, { id: String(pos.id), hash: r.hash });
     K.riskD10.set(m.id, Math.max(K.riskD10.get(m.id) || 0, t.d10 || 0));
@@ -461,7 +532,7 @@ async function handleTriggers(pos) {
     reason = D.triggerFor(pos, price, clock); // [R] any reason the banded price still justifies
     if (!reason) return;
   }
-  const r = await send(`trig:${pos.id}`, "executeClose", [pos.id, price, head, REASON[reason]], CFG.tips.defensive);
+  const r = await send(`trig:${pos.id}`, "executeClose", [pos.id, price, head, REASON[reason]], CFG.tips.defensive, { defensive: true });
   if (r.ok) note("close", `#${pos.id} ${t.symbol} ${reason} at ${D.fromWad(price)}`, { id: String(pos.id), hash: r.hash });
   else if (r.error !== "inflight") note("trigger-retry", `#${pos.id} ${reason}: ${r.error}`);
 }
@@ -475,6 +546,7 @@ async function flagIfCrashed(m, t) {
   if (!plan) return false;
   const r = await send(`rug:${m.id}`, "flagRug", [m.id, plan.before, plan.blockBefore, plan.after, plan.blockAfter], CFG.tips.defensive, {
     lockMs: 120_000, // [R] once per dump, not once per tick
+    defensive: true,
   });
   if (r.ok) {
     note("rug", `${t.symbol}: ${D.fromWad(plan.before)} -> ${D.fromWad(plan.after)}`, { hash: r.hash });
@@ -527,7 +599,7 @@ async function checkTrouble(marketIds) {
     }
     if (!K.troubleSince.has(id)) K.troubleSince.set(id, Date.now());
     if (Date.now() - K.troubleSince.get(id) < 60_000) continue;
-    const r = await send(`disable:${id}`, "setMarketEnabled", [id, false], CFG.tips.defensive, { lockMs: 120_000 });
+    const r = await send(`disable:${id}`, "setMarketEnabled", [id, false], CFG.tips.defensive, { lockMs: 120_000, defensive: true });
     if (r.ok) {
       note("disable", `market ${id} (${empty ? "pool emptied" : "depth collapsed"}): opens stopped, positions stay`);
       m.enabled = false;
@@ -796,6 +868,21 @@ function loadKey() {
   }
   wallet = createWalletClient({ account, chain: net, transport: http(CFG.rpc) });
   K.address = account.address;
+  loadSecondKey();
+}
+
+/** The optional defensive key (KEEPER2_KEYSTORE + KEEPER2_PASSPHRASE_FILE). Any problem with it leaves one lane. */
+function loadSecondKey() {
+  try {
+    const key = loadKeeperKey(CFG.rpc, "KEEPER2");
+    if (!key) return;
+    const a = privateKeyToAccount(key, { nonceManager });
+    if (lc(a.address) === lc(account.address)) throw new Error("it is the main keeper key: two lanes need two keys");
+    account2 = a;
+    wallet2 = createWalletClient({ account: a, chain: net, transport: http(CFG.rpc) });
+  } catch (e) {
+    console.warn(`[keeper] second key: ${errName(e)}: defensive transactions go through the main key`);
+  }
 }
 
 /**
@@ -809,6 +896,15 @@ async function checkRole() {
     ok = await read("isKeeper", [account.address]);
   } catch {
     return false;
+  }
+  if (account2) {
+    // the second key is a keeper or it is not used: a revoked or never-granted key must not swallow a stop-loss
+    const ok2 = await read("isKeeper", [account2.address]).catch(() => null);
+    if (ok2 != null) {
+      const now = ok2 ? account2.address : null;
+      if (now !== K.defensive) console.log(`[keeper] defensive lane: ${now ? `${now} (own nonces)` : `${account2.address} is not a keeper, using the main key`}`);
+      K.defensive = now;
+    }
   }
   if (!ok) dropRole();
   else if (!K.enabled) {
@@ -848,6 +944,8 @@ export async function startKeeper() {
   K.startError = null;
   K.observer = true; // until isKeeper says otherwise (first loop pass)
   loadKey();
+  // a wallet deposits before it trades: look its funder up then, so its first order does not wait for the answer
+  onDeposit((w) => account && Funding.warm(w));
   (async () => {
     let paramsAt = Date.now();
     let marketsAt = 0;
@@ -886,3 +984,6 @@ export function positionsOf(trader) {
 
 // for engine/real.mjs (the site's Real-mode API): same reads, same caches, same caps as the keeper's
 export { read, market as marketOf, feePips, POOL_ABI, ABI, ST };
+
+/** Guard state for the API: clusters and the defensive lane. */
+export const guards = () => ({ defensiveLane: K.defensive, funding: Funding.stats() });

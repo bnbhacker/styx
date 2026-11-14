@@ -193,6 +193,7 @@ const routes = {
     pool: KP.K.pool,
     adapter: KP.K.adapter,
     keeper: KP.K.address,
+    ...KP.guards(),
     chainId: CFG.chainId,
     chainHead: KP.K.chainHead,
     engineHead: M.state.head,

@@ -128,3 +128,61 @@ test("rugPlan: -80 % within the block window, fresh", () => {
   assert.equal(D.rugPlan(s, { head: 1400n, windowBlocks: 280n, dropBps: 8000n }), null, "stale after-price");
   assert.equal(D.rugPlan([[0, 1, 1n], [1, 0.5, 2n]], { head: 2n, windowBlocks: 280n, dropBps: 8000n }), null, "-50 % is not a rug");
 });
+
+test("insiderShare: top holders plus mint recipients, pools and burn excluded but still supply", () => {
+  const bal = new Map([
+    ["pool", 600n],
+    ["dead", 100n],
+    ["dev", 150n],
+    ["a", 100n],
+    ["b", 50n],
+    ["gone", 0n],
+  ]);
+  const r = D.insiderShare(bal, { minted: ["dev", "gone"], exclude: new Set(["pool", "dead"]), top: 1 });
+  // top 1 of the free holders is dev (150); dev is also the mint recipient: counted once
+  assert.equal(r.share, 0.15);
+  assert.deepEqual(r.holders, [["dev", 0.15]]);
+  const all = D.insiderShare(bal, { exclude: new Set(["pool", "dead"]) });
+  assert.equal(all.share, 0.3);
+  // a mint recipient outside the top still counts
+  assert.equal(D.insiderShare(bal, { minted: ["b"], exclude: new Set(["pool", "dead"]), top: 1 }).share, 0.2);
+  assert.equal(D.insiderShare(new Map([["x", 0n]])), null);
+});
+
+test("insiderTier / insiderRefuses: 20 % and 40 % steps, unknown is the strictest", () => {
+  assert.equal(D.insiderTier(0.2).tier, 0);
+  assert.deepEqual(D.insiderTier(0.3), { tier: 1, maxLev: 5, notionalDiv: 2n, maxWinPoolBps: 0n });
+  assert.equal(D.insiderTier(0.41).tier, 2);
+  assert.equal(D.insiderTier(null).tier, 2);
+  const short = (leverage, stake = E) => ({ isLong: false, leverage, stake });
+  const pool = { shortMaxWin: 0n, poolBase: 1000n * E, maxWinBps: 20_000n };
+  assert.equal(D.insiderRefuses({ ...short(10), isLong: true }, D.insiderTier(0.9), pool), false); // longs never
+  assert.equal(D.insiderRefuses(short(10), D.insiderTier(0.1), pool), false);
+  assert.equal(D.insiderRefuses(short(10), D.insiderTier(0.3), pool), true);
+  assert.equal(D.insiderRefuses(short(5), D.insiderTier(0.3), pool), false);
+  assert.equal(D.insiderRefuses(short(5), D.insiderTier(0.5), pool), true);
+  // tier 2: shorts' max win at most 1 % of the pool (10 of 1000): 2 x stake each
+  assert.equal(D.insiderRefuses(short(2, 5n * E), D.insiderTier(0.5), pool), false); // 10 = the limit
+  assert.equal(D.insiderRefuses(short(2, 5n * E + 1n), D.insiderTier(0.5), pool), true);
+  assert.equal(D.insiderRefuses(short(2, E), D.insiderTier(0.5), { ...pool, shortMaxWin: 9n * E }), true);
+});
+
+test("clusters: a shared funder joins wallets, bridges and hubs join nobody", () => {
+  const id = (links, opt) => D.clusters(new Map(Object.entries(links)), opt);
+  let c = id({ a: "f", b: "f", c: null, d: "a" });
+  assert.equal(c.get("a"), c.get("b"));
+  assert.equal(c.get("d"), c.get("a")); // funded by a
+  assert.notEqual(c.get("c"), c.get("a"));
+  assert.equal(c.get("c"), "c");
+  // an excluded funder (bridge, exchange) links nobody
+  c = id({ a: "bridge", b: "bridge" }, { exclude: new Set(["bridge"]) });
+  assert.notEqual(c.get("a"), c.get("b"));
+  // a funder of more than `hub` wallets is a hub
+  c = id({ a: "h", b: "h", c: "h" }, { hub: 2 });
+  assert.notEqual(c.get("a"), c.get("b"));
+  c = id({ a: "h", b: "h" }, { hub: 2 });
+  assert.equal(c.get("a"), c.get("b"));
+  // self-funding and chains
+  c = id({ a: "a", b: "a", c: "b" });
+  assert.equal(c.get("c"), c.get("a"));
+});

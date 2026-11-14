@@ -11,6 +11,7 @@ import {V4SpotSource} from "../V4SpotSource.sol";
 ///
 ///   cast wallet import inverse-deployer --interactive          # once; stored in ~/.foundry/keystores
 ///   NETWORK=elysium forge script script/Deploy.s.sol --rpc-url elysium --account inverse-deployer --broadcast
+///   (NETWORK=elysium-mainnet with --rpc-url elysium-mainnet for the mainnet)
 ///
 /// Env (all optional): KEEPER (default deployer), GUARDIAN, TREASURY, REBATE_SOURCE, MAX_POOL_CASH (wei).
 /// Guarded launch on Elysium: the LP gate is ON with only the deployer allowed, pool cash capped.
@@ -29,6 +30,7 @@ contract Deploy is Script {
         address[] tsFactories; //  getPool(a, b, tickSpacing) -> setFactory(f, 2)
         Hook[] v4Hooks; // allowed for V4SpotSource feeds; empty = no adapter
         bool elysium;
+        bool mainnet; // Elysium mainnet: ~0.23 s blocks (the testnet makes ~0.107 s ones)
     }
 
     function _net(string memory id) internal pure returns (Net memory n) {
@@ -45,6 +47,30 @@ contract Deploy is Script {
             n.v4Hooks[0] = Hook(0x0088BEA218c283a939C93d7dB8353Cd87CDCF647, 0xd492b95e2ECf74DB6c5493E7C32F6816248484cC);
             // WHYPE pairs (GCR, VEL, ...)
             n.v4Hooks[1] = Hook(0x889A96eeDb1dF35A012D7e48BaF7f9c780f1243b, 0xDa605da70Bff4b32a9B379c614A6D9E4a09BAAEC);
+        } else if (keccak256(bytes(id)) == keccak256("elysium-mainnet")) {
+            // MAINNET (chain 99901), read 14.11.2026. WHYPE is the one on elysium.kinetiq.xyz/docs/contract-addresses
+            // (look-alikes exist). The factories are every v3 venue with swaps in a 60 000-block scan whose own
+            // registry returned its pools; the engine's list (engine/config.mjs) is the same.
+            n.chainId = 99901;
+            n.elysium = true;
+            n.mainnet = true;
+            n.weth = 0xbA876237B0F021A6c6D852d6c26E107997cC5E81; // WHYPE
+            n.feeFactories = new address[](8);
+            n.feeFactories[0] = 0x8C60243181370bDA9A7d1a45b1249A8263da0158;
+            n.feeFactories[1] = 0x6307fc239C7964942c1BfFE51930E55606619c74;
+            n.feeFactories[2] = 0x1707327F626496A7b5b3872e7E4d2879Df7d7a9f;
+            n.feeFactories[3] = 0x809ff79945FfFbf9B8Df33Bb3B62872CEB2efaF1;
+            n.feeFactories[4] = 0x367F85886af509E364c8190862BC714555FeFc3e;
+            n.feeFactories[5] = 0x4F66184A9FFabB7f7071D590C2c48DEDf41676f4;
+            n.feeFactories[6] = 0x24e21E3F2b0bB0C166ec3EAFf1e615aB14cDD85F;
+            n.feeFactories[7] = 0xE83aaBBd2e326ceAAE3BDCB605b3af94Ac3CF883;
+            n.tsFactories = new address[](2); // keyed by tick spacing, dynamic fee: the two busiest v3 venues
+            n.tsFactories[0] = 0xEfd7A089D3057F05189B05f74Ffcf30610c42891;
+            n.tsFactories[1] = 0x29cd8852FF040CfE74fb20277A121eD1293AFb41;
+            // Only hookless pools of the main PoolManager are allowed at deploy. A launchpad hook sits in the swap
+            // path and takes its own fee: the owner allows each one with setHookAllowed after reading its code.
+            n.v4Hooks = new Hook[](1);
+            n.v4Hooks[0] = Hook(0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1, address(0));
         } else if (keccak256(bytes(id)) == keccak256("rh")) {
             n.chainId = 4663;
             n.weth = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
@@ -54,7 +80,7 @@ contract Deploy is Script {
             n.tsFactories[0] = 0xc63d7338c178e805c544B8f897066bD3BBcBE136; // Aero Slipstream
             n.v4Hooks = new Hook[](0);
         } else {
-            revert("NETWORK: rh or elysium");
+            revert("NETWORK: rh, elysium or elysium-mainnet");
         }
     }
 
@@ -72,6 +98,16 @@ contract Deploy is Script {
         p.marketLiabilityBps = 200; // guarded launch: max-win per coin side <= 2 % of the pool (STYX-ELYSIUM §3.5)
         p.notionalCapMax = 50 ether; // 5 HYPE at 10x per side: the guarded-launch ceiling over the keeper
         p.maxPoolCash = vm.envOr("MAX_POOL_CASH", uint256(5_000 ether));
+        return p;
+    }
+
+    /// @dev The same windows in seconds on mainnet, whose blocks take ~0.23 s (20 000 blocks, 14.11.2026): the block
+    ///      counts of _elysiumParams shrink by 0.107 / 0.23. cancelDelay (10 s) still covers the whole window in
+    ///      which the keeper may fill: (9 + 23) blocks * 0.23 s = 7.4 s.
+    function _mainnetBlocks(InversePool.Params memory p) internal pure returns (InversePool.Params memory) {
+        p.maxExecDelayBlocks = 9; // ~2.1 s, as 20 blocks are on the testnet
+        p.maxPriceAgeBlocks = 23; // ~5.3 s
+        p.rugWindowBlocks = 130; // ~30 s
         return p;
     }
 
@@ -97,7 +133,8 @@ contract Deploy is Script {
             address(src)
         );
         if (n.elysium) {
-            pool.setParams(_elysiumParams(pool.getParams()));
+            InversePool.Params memory p = _elysiumParams(pool.getParams());
+            pool.setParams(n.mainnet ? _mainnetBlocks(p) : p);
             pool.setLpAllowed(deployer, true);
             pool.setLpAllowed(address(0), true); // gate on: guarded launch, team LP only
         }

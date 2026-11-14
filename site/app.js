@@ -602,7 +602,10 @@ views.coin = async (addr, sideHint) => {
     const cs = $("#cap-short");
     if (!cl || !cs) return;
     cl.innerHTML = !m.ok ? "Closed for trading" : no ? esc(no) : `Stake gone at −${lose}% · max win at +${win}%<span class="room">${esc(roomTxt("long"))}</span>`;
-    cs.innerHTML = !m.ok ? esc((m.reasons || []).join(" · ")) : no ? "" : `Stake gone at +${lose}% · max win at −${win}%<span class="room">${esc(roomTxt("short"))}</span>`;
+    // the insider limit on shorts (too much of the supply with a few holders): say it where the short is priced
+    const sl = real() && rm?.listed ? rm.shortLimit : null;
+    const shortCap = sl && lev > sl.maxLev ? esc(sl.why) : `Stake gone at +${lose}% · max win at −${win}%<span class="room">${esc(roomTxt("short") + (sl ? ` · ${sl.why}` : ""))}</span>`;
+    cs.innerHTML = !m.ok ? esc((m.reasons || []).join(" · ")) : no ? "" : shortCap;
   };
   tk.querySelectorAll("[data-l]").forEach((b) => (b.onclick = () => ((lev = Number(b.dataset.l)), paintTicket())));
 

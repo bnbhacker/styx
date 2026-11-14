@@ -27,3 +27,4 @@ show_metrics = true
 [rpc_endpoints]
 rh = "https://rpc.mainnet.chain.robinhood.com"
 elysium = "https://testnet-rpc.elysium.kinetiq.xyz"
+elysium-mainnet = "https://rpc.elysium.kinetiq.xyz"

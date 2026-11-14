@@ -32,7 +32,7 @@ export const WHY = {
   8: "new trades are paused",
   9: "the price left the on-chain band during the window",
   10: "new accounts trade smaller stakes in their first day",
-  11: "large holders cannot short their own coin",
+  11: "shorts of this coin are limited: too much of its supply sits with a few holders",
   12: "you already hold the other side of this coin",
 };
 
@@ -317,6 +317,13 @@ async function fedOf(m, id) {
   return lc(manager) !== zeroAddress;
 }
 
+/** The insider limit on this coin's shorts, for the ticket: null when shorts are not limited. */
+function shortLimit(token) {
+  const t = KP.shortTier(token);
+  if (!t.tier) return null;
+  return { maxLev: t.maxLev, share: t.share, counted: t.state === "ready", halfNotional: t.notionalDiv > 1n, maxWinPoolBps: Number(t.maxWinPoolBps), why: t.why };
+}
+
 /** Is the coin listed for real money, and how much room is left on each side (the ticket's "room"). */
 async function marketNow(token) {
   need();
@@ -341,8 +348,16 @@ async function marketNow(token) {
     const mkWin = (base * BigInt(P.marketLiabilityBps)) / BPS;
     const totWin = (base * BigInt(P.totalLiabilityBps)) / BPS;
     const totRoom = totWin > reserved ? totWin - reserved : 0n;
+    const tier = KP.shortTier(token);
+    const poolWin = (base * tier.maxWinPoolBps) / BPS; // shorts of a concentrated coin: a smaller share of the pool
     const side = (isLong) => {
       const notional = BigInt(isLong ? m.notionalLong : m.notionalShort);
+      if (!isLong && tier.tier) {
+        const c = cap / tier.notionalDiv;
+        const w = BigInt(m.maxWinShort);
+        const room = tier.maxWinPoolBps ? (poolWin > w ? poolWin - w : 0n) : mkWin > w ? mkWin - w : 0n;
+        return { notional: f(c > notional ? c - notional : 0n), maxWin: f(room < totRoom ? room : totRoom) };
+      }
       const win = BigInt(isLong ? m.maxWinLong : m.maxWinShort);
       const winRoom = mkWin > win ? mkWin - win : 0n;
       return { notional: f(cap > notional ? cap - notional : 0n), maxWin: f(winRoom < totRoom ? winRoom : totRoom) };
@@ -358,6 +373,7 @@ async function marketNow(token) {
     maxWinBps: Number(P.maxWinBps),
     long,
     short,
+    shortLimit: shortLimit(token),
     fed,
     canList: KP.K.enabled,
     ...prices(t),

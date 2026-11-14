@@ -193,6 +193,13 @@ const NETWORKS = {
       "0xe83aabbd2e326ceaae3bdcb605b3af94ac3cf883",
     ],
     nativeUsd: [5, 1000],
+    // balances that are not an insider's (holders.mjs): the bridge contracts on Elysium from docs/contract-addresses
+    holderExclude: [
+      "0x61ebbc3a29f1970af2ce862ba9c5364832e14d17", // gateway router
+      "0x5dc84e4cb0f9082246e92a5585c5395592b1af1f", // ERC-20 gateway
+      "0xb916e67307ad52955d37b6c123cf1a79c10855b6", // WHYPE gateway
+      "0xeab2615db8d4b6620be32acc51d72bae9b478cd4", // bridge wallet gateway
+    ],
     // the same guarded launch as on the testnet (STYX-ELYSIUM §3.5)
     policy: { maxStake: 5, maxLev: 5, newAccountStake: 1 },
     publicRpc: "https://rpc.elysium.kinetiq.xyz",
@@ -204,6 +211,12 @@ const NETWORKS = {
 const id = (process.env.NETWORK || "elysium").toLowerCase();
 const N = NETWORKS[id];
 if (!N) throw new Error(`NETWORK=${id}: expected one of ${Object.keys(NETWORKS).join(", ")}`);
+
+/** A network's address list plus a comma-separated env list, lowercased and deduplicated. */
+function envAddrs(name, base = []) {
+  const extra = String(process.env[name] || "").split(",").map((x) => x.trim()).filter((x) => /^0x[0-9a-fA-F]{40}$/.test(x));
+  return [...new Set(lcAll([...base, ...extra]))];
+}
 
 export const CFG = {
   network: id,
@@ -271,6 +284,14 @@ export const CFG = {
     maxLev: Number(process.env.POLICY_MAX_LEV ?? N.policy.maxLev),
     newAccountStake: Number(process.env.POLICY_NEW_ACCOUNT_STAKE ?? N.policy.newAccountStake),
   },
+  // insider short limiter: lockers, launchpad vaults and bridge contracts whose balance is not an insider's
+  // (N.holderExclude plus STYX_HOLDER_EXCLUDE, a comma list). PoolManagers, the coin's pools and burn addresses are
+  // left out by the code.
+  holderExclude: envAddrs("STYX_HOLDER_EXCLUDE", N.holderExclude),
+  // wallet clusters: funders that link nobody (exchange hot wallets, solvers, bridges that pay out from an EOA), and
+  // how many wallets one funder may have paid before it counts as such a hub on its own
+  clusterExclude: new Set(envAddrs("STYX_CLUSTER_EXCLUDE", N.clusterExclude)),
+  clusterHub: Math.max(1, Math.floor(Number(process.env.STYX_CLUSTER_HUB) || 8)),
   // v4 hooks that take their own fee (the PoolKey says 0): pips per hook, for the notional cap. Unknown -> 0.1·D10.
   hookFeePips: {},
   // Real mode: STYX_POOL = deployed InversePool; the key comes from a keystore (see keeper/keystore.mjs)

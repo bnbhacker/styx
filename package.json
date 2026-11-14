@@ -7,7 +7,7 @@
     "start": "node engine/elysium.mjs",
     "start:mainnet": "node engine/elysium-mainnet.mjs",
     "start:rh": "node engine/rh.mjs",
-    "test": "node --test engine/keeper/decide.test.mjs engine/keeper/keystore.test.mjs"
+    "test": "node --test engine/keeper/decide.test.mjs engine/keeper/keystore.test.mjs engine/keeper/guards.test.mjs"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

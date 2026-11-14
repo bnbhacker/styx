@@ -67,12 +67,13 @@ const LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/;
 /**
  * Keeper key from KEEPER_KEYSTORE + KEEPER_PASSPHRASE_FILE (paths outside the repo). KEEPER_DEV_KEY is accepted only
  * when the RPC is a local dev chain (anvil), so a test key can never sign on a real network. null = no keeper.
+ * prefix: "KEEPER" for the main key, "KEEPER2" for the optional second key that sends the defensive transactions.
  */
-export function loadKeeperKey(rpc) {
-  const path = process.env.KEEPER_KEYSTORE;
+export function loadKeeperKey(rpc, prefix = "KEEPER") {
+  const path = process.env[`${prefix}_KEYSTORE`];
   if (path) {
-    const passFile = process.env.KEEPER_PASSPHRASE_FILE;
-    if (!passFile) throw new Error("KEEPER_KEYSTORE is set but KEEPER_PASSPHRASE_FILE is not");
+    const passFile = process.env[`${prefix}_PASSPHRASE_FILE`];
+    if (!passFile) throw new Error(`${prefix}_KEYSTORE is set but ${prefix}_PASSPHRASE_FILE is not`);
     const json = readFileSync(path, "utf8");
     const pass = readPassphraseFile(passFile);
     try {
@@ -91,9 +92,9 @@ export function loadKeeperKey(rpc) {
       throw e;
     }
   }
-  const dev = process.env.KEEPER_DEV_KEY;
+  const dev = process.env[`${prefix}_DEV_KEY`];
   if (dev) {
-    if (!LOCAL.test(rpc)) throw new Error("KEEPER_DEV_KEY only works against a local dev chain (127.0.0.1/localhost)");
+    if (!LOCAL.test(rpc)) throw new Error(`${prefix}_DEV_KEY only works against a local dev chain (127.0.0.1/localhost)`);
     return dev;
   }
   return null;

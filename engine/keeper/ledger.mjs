@@ -18,6 +18,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(HERE, "..", "data");
 const BROADCAST = () => path.join(HERE, "..", "..", "contracts", "broadcast", "Deploy.s.sol", String(CFG.chainId), "run-latest.json");
 const EVENTS = new Set([
+  "Deposited", // not journaled: passed to onDeposit hooks
   "MarketAdded",
   "OpenRequested",
   "PositionOpened",
@@ -273,6 +274,10 @@ function feedAdd(e, same) {
   return true;
 }
 
+const depositHooks = [];
+/** Call fn(wallet) for every deposit the ledger reads (a wallet deposits before it can trade). */
+export const onDeposit = (fn) => depositHooks.push(fn);
+
 /** One event into the ledger. Applying it again changes nothing. -> changed */
 function apply(log, times) {
   const a = log.args;
@@ -288,6 +293,9 @@ function apply(log, times) {
   let fed = false;
   const p = id && (L.pos[id] ||= { id });
   switch (log.eventName) {
+    case "Deposited":
+      depositHooks.forEach((fn) => fn(lc(a.user))); // not journaled: the keeper looks the wallet's funder up early
+      break;
     case "MarketAdded":
       L.markets[mk] = { token: lc(a.token), decimals: Number(a.decimals) };
       break;
