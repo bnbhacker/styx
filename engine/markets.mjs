@@ -519,6 +519,9 @@ async function statsLoop() {
 
 // ---------- admission ----------
 
+// symbols only the configured native, wrapped-native and USD tokens may carry; those are never coins themselves
+const RESERVED = new Set([CFG.native, `W${CFG.native}`, CFG.usdSymbol].map((x) => x.toUpperCase()));
+
 export function mcapUsd(t) {
   const px = spot(t);
   return px && t.supply && state.ethUsd ? px * t.supply * state.ethUsd : null;
@@ -528,6 +531,8 @@ export function admission(t) {
   const reasons = [];
   const now = Date.now();
   if (!t.primary || spot(t) == null) reasons.push(`no live ${CFG.native}/${CFG.usdSymbol} pool`);
+  // a token that wears the name of the chain's own money but is not it (the Elysium docs warn of fake WHYPE and USDC)
+  if (RESERVED.has(String(t.symbol || "").trim().toUpperCase())) reasons.push(`not the real ${String(t.symbol).trim()}: a look-alike token`);
   const mc = mcapUsd(t);
   if (mc != null && mc < R.minMcapUsd) reasons.push(`market cap under $${R.minMcapUsd / 1000}K`);
   const created = pools.get(t.primary)?.createdAt || t.ds?.createdAt;

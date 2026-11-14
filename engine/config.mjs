@@ -2,7 +2,8 @@ import { keccak256, toHex } from "viem";
 
 /**
  * Everything tunable lives here. Numbers mirror SPEC.md.
- * Styx runs on Elysium: NETWORK=elysium is the default; NETWORK=rh (engine/rh.mjs) keeps the Robinhood Chain build.
+ * Styx runs on Elysium: NETWORK=elysium (the testnet) is the default, NETWORK=elysium-mainnet
+ * (engine/elysium-mainnet.mjs) is the mainnet, NETWORK=rh (engine/rh.mjs) keeps the Robinhood Chain build.
  */
 const lcAll = (xs) => xs.map((x) => x.toLowerCase());
 
@@ -138,6 +139,66 @@ const NETWORKS = {
       ],
     },
   },
+
+  // Elysium mainnet (live since 09.11.2026). Read from the chain and the docs on 14.11.2026:
+  // - chainId 99901 (eth_chainId), WHYPE and USDC from elysium.kinetiq.xyz/docs/contract-addresses (look-alikes exist);
+  // - blocks ~0.23 s (20 000 blocks), base fee 0.5 gwei, ~10k swaps an hour, HYPE ≈ $68 in the deepest USDC/WHYPE pool;
+  // - getLogs is capped at 10 000 logs a query, and logs carry blockTimestamp.
+  // DexScreener lists the chain ("elysium"), but the engine reads everything from the chain as on the testnet.
+  "elysium-mainnet": {
+    name: "Elysium",
+    rpc: process.env.ELY_MAINNET_RPC || "https://rpc.elysium.kinetiq.xyz",
+    chainId: 99901,
+    port: 4682,
+    native: "HYPE",
+    WETH: "0xba876237b0f021a6c6d852d6c26e107997cc5e81", // WHYPE
+    USD: "0xb47c4c8f73f009cc0c0d3f92b388d13e293f0b65",
+    usdSymbol: "USDC",
+    usdDecimals: 6,
+    // every v4 Swap emitter of a 60 000-block scan (14.11) that is a stock PoolManager: 24 009 bytes of code, and
+    // extsload of slot 6 returned the sqrtPrice and liquidity of the pool's last Swap event. Left out: 0x794a…ff1f
+    // (other bytecode, price 1 % off its event) and 0x3564…fa25 (other bytecode, one swap).
+    poolManagers: [
+      "0xe2e105d3f7209a9da11f83ccf3e7398a753823f1", // the main one: 426 active pools, HYPE / WHYPE / USDC quotes
+      "0x5c54a7293d96b11a29a0256ee8dfdbc3059637da", // a launchpad: native HYPE pools, fee 0 in the key, one hook
+      "0x5fb015a49f5b35073f9ce01c2adb287a75f89600",
+      "0x06c63714fbf1f5753017123e2fcfdede4540b2c4",
+      "0xb308b5df891c300a5f5a5b8fdbc30108ba842490",
+    ],
+    stateView: null, // read v4 state with PoolManager.extsload
+    dexscreener: null,
+    pollMs: process.env.STYX_POOL ? 400 : 1000,
+    maxRange: 1000n, // bursts reach ~0.9 swaps a block: stay well under the 10 000-log cap
+    backfillBlocks: BigInt(process.env.BACKFILL || 20000), // ~75 min of history on start
+    // STYX-ELYSIUM §3.2 asks for $12k / $3.5k / $0.7k of depth; in HYPE at ~$77 (06.11). Recalibrate on live data.
+    tiers: [
+      [150, 10],
+      [45, 5],
+      [9, 2],
+    ],
+    minStake: 0.1, // STYX-ELYSIUM §3.3
+    paper: { claim: 30, poolSeed: 750 },
+    tips: { defensive: 1_000_000_000n, exec: 50_000_000n }, // ordering is by priority fee, as on the testnet
+    // every factory of a v3 Swap emitter in the same scan whose registry returned its pools (verifyV3)
+    v3Factories: [
+      "0xefd7a089d3057f05189b05f74ffcf30610c42891", // keyed by tick spacing, dynamic fee; the busiest USDC/WHYPE pool
+      "0x29cd8852ff040cfe74fb20277a121ed1293afb41", // keyed by tick spacing, dynamic fee
+      "0x8c60243181370bda9a7d1a45b1249a8263da0158", // fee-keyed, USDC/WHYPE at 0.05 / 0.3 / 1 %
+      "0x6307fc239c7964942c1bffe51930e55606619c74",
+      "0x1707327f626496a7b5b3872e7e4d2879df7d7a9f",
+      "0x809ff79945fffbf9b8df33bb3b62872ceb2efaf1",
+      "0x367f85886af509e364c8190862bc714555fefc3e",
+      "0x4f66184a9ffabb7f7071d590c2c48dedf41676f4",
+      "0x24e21e3f2b0bb0c166ec3eaff1e615ab14cdd85f",
+      "0xe83aabbd2e326ceaae3bdcb605b3af94ac3cf883",
+    ],
+    nativeUsd: [5, 1000],
+    // the same guarded launch as on the testnet (STYX-ELYSIUM §3.5)
+    policy: { maxStake: 5, maxLev: 5, newAccountStake: 1 },
+    publicRpc: "https://rpc.elysium.kinetiq.xyz",
+    explorer: "https://elysium.kinetiq.xyz", // Kinetiq's own explorer; the /tx/<hash> path is not checked yet
+    sessionGas: 0.02, // an order is ~250k gas: ~160 orders at the 0.5 gwei base fee
+  },
 };
 
 const id = (process.env.NETWORK || "elysium").toLowerCase();
@@ -174,6 +235,7 @@ export const CFG = {
     v4: keccak256(toHex("Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)")),
     v4Init: keccak256(toHex("Initialize(bytes32,address,address,uint24,int24,address,uint160,int24)")),
     v3Created: keccak256(toHex("PoolCreated(address,address,uint24,int24,address)")),
+    v3CreatedTick: keccak256(toHex("PoolCreated(address,address,int24,address)")), // factories keyed by tick spacing
   },
 
   rules: {

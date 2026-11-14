@@ -1,0 +1,16 @@
+{
+  "name": "styx",
+  "private": true,
+  "type": "module",
+  "description": "Styx: long or short any Elysium memecoin against one house pool",
+  "scripts": {
+    "start": "node engine/elysium.mjs",
+    "start:mainnet": "node engine/elysium-mainnet.mjs",
+    "start:rh": "node engine/rh.mjs",
+    "test": "node --test engine/keeper/decide.test.mjs engine/keeper/keystore.test.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "viem": "2.55.8"
+  }
+}

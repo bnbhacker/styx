@@ -95,11 +95,16 @@ export async function poolState(p) {
 }
 
 const v3FactoryAbi = parseAbi(["function getPool(address,address,uint24) view returns (address)"]);
+// Slipstream-style factories (Elysium mainnet's two busiest v3 venues) key a pool by tick spacing: the fee is dynamic
+const v3TickFactoryAbi = parseAbi(["function getPool(address,address,int24) view returns (address)"]);
+const v3TickAbi = parseAbi(["function tickSpacing() view returns (int24)"]);
+const same = (a, b) => typeof a === "string" && a.toLowerCase() === b.toLowerCase();
 
 /**
- * A v3-style pool the engine may trust: factory() is on the network's allowlist and that factory's
- * getPool(token0, token1, fee) returns this very address. Any contract can emit the v3 Swap topic and claim
- * token0/token1, so without this a fake "pool" with a huge liquidity field could become a coin's price.
+ * A v3-style pool the engine may trust: factory() is on the network's allowlist and that factory's own registry
+ * returns this very address, by getPool(token0, token1, fee) or, for factories keyed by tick spacing, by
+ * getPool(token0, token1, tickSpacing). Any contract can emit the v3 Swap topic and claim token0/token1, so without
+ * this a fake "pool" with a huge liquidity field could become a coin's price.
  * -> { factory, fee } or null
  */
 export async function verifyV3(pool, t0, t1) {
@@ -110,23 +115,34 @@ export async function verifyV3(pool, t0, t1) {
     ]);
     const factory = f.toLowerCase();
     if (CFG.v3Factories && !CFG.v3Factories.has(factory)) return null;
-    const real = await client.readContract({ address: factory, abi: v3FactoryAbi, functionName: "getPool", args: [t0, t1, fee] });
-    return real.toLowerCase() === pool.toLowerCase() ? { factory, fee: Number(fee) } : null;
+    const byFee = await client.readContract({ address: factory, abi: v3FactoryAbi, functionName: "getPool", args: [t0, t1, fee] }).catch(() => null);
+    if (same(byFee, pool)) return { factory, fee: Number(fee) };
+    const ts = await client.readContract({ address: pool, abi: v3TickAbi, functionName: "tickSpacing" });
+    const byTick = await client.readContract({ address: factory, abi: v3TickFactoryAbi, functionName: "getPool", args: [t0, t1, ts] });
+    return same(byTick, pool) ? { factory, fee: Number(fee) } : null;
   } catch {
     return null;
   }
 }
 
-/** Every pool a fee-keyed v3 factory holds for a pair, over the usual fee tiers. Factories keyed otherwise give none. */
+const V3_FEES = [100, 500, 3000, 10000];
+const V3_TICKS = [1, 10, 50, 60, 100, 200];
+
+/** Every pool a v3 factory holds for a pair, over the usual fee tiers and, for tick-keyed factories, tick spacings. */
 export async function v3PoolsFor(factory, a, b) {
-  const out = [];
-  for (const fee of [100, 500, 3000, 10000]) {
+  const out = new Set();
+  const add = (p) => p && !/^0x0{40}$/i.test(p) && out.add(p.toLowerCase());
+  for (const fee of V3_FEES) {
     try {
-      const p = await client.readContract({ address: factory, abi: v3FactoryAbi, functionName: "getPool", args: [a, b, fee] });
-      if (p && !/^0x0{40}$/i.test(p)) out.push(p.toLowerCase());
+      add(await client.readContract({ address: factory, abi: v3FactoryAbi, functionName: "getPool", args: [a, b, fee] }));
     } catch {}
   }
-  return out;
+  for (const ts of V3_TICKS) {
+    try {
+      add(await client.readContract({ address: factory, abi: v3TickFactoryAbi, functionName: "getPool", args: [a, b, ts] }));
+    } catch {}
+  }
+  return [...out];
 }
 
 export async function v3Tokens(pool) {
@@ -194,20 +210,22 @@ export async function v4PoolsOf(token) {
   return out;
 }
 
-/** Creation time of a v3 pool from its factory's PoolCreated event; null if the factory is not v3-shaped. */
+/**
+ * Creation time of a v3 pool from its factory's PoolCreated event; null if the factory emits neither shape.
+ * Uniswap: PoolCreated(token0, token1, fee, tickSpacing, pool); tick-keyed: PoolCreated(token0, token1, tickSpacing,
+ * pool). The third topic is not filtered (a dynamic-fee pool no longer reports the fee it was created with); the
+ * pool is the last data word in both.
+ */
 export async function v3CreatedAt(pool, t0, t1) {
   try {
-    const [f, fee] = await Promise.all([
-      client.readContract({ address: pool, abi: v3Abi, functionName: "factory" }),
-      client.readContract({ address: pool, abi: v3Abi, functionName: "fee" }),
-    ]);
+    const f = await client.readContract({ address: pool, abi: v3Abi, functionName: "factory" });
     const found = await logs({
       address: f,
       fromBlock: "0x0",
       toBlock: "latest",
-      topics: [CFG.topics.v3Created, toHex(BigInt(t0), { size: 32 }), toHex(BigInt(t1), { size: 32 }), toHex(fee, { size: 32 })],
+      topics: [[CFG.topics.v3Created, CFG.topics.v3CreatedTick], toHex(BigInt(t0), { size: 32 }), toHex(BigInt(t1), { size: 32 })],
     });
-    const l = found.find((x) => ("0x" + x.data.slice(2 + 64 + 24, 2 + 128)).toLowerCase() === pool);
+    const l = found.find((x) => ("0x" + x.data.slice(-40)).toLowerCase() === pool.toLowerCase());
     if (!l) return null;
     return l.blockTimestamp ? parseInt(l.blockTimestamp, 16) * 1000 : await tsOf(l.blockNumber);
   } catch {
